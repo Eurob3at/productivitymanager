@@ -18,10 +18,17 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /* class to demonstrate listing individual Gmail messages */
 public class GmailQuickstart {
@@ -43,6 +50,7 @@ public class GmailQuickstart {
    */
   private static final List<String> SCOPES = Collections.singletonList(GmailScopes.GMAIL_READONLY);
   private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
+  private static final String OUTPUT_FILE_PATH = "src/main/java/resources.json";
 
   /**
    * Creates an authorized Credential object.
@@ -80,10 +88,10 @@ public class GmailQuickstart {
         .setApplicationName(APPLICATION_NAME)
         .build();
 
-    // Print individual messages in the user's mailbox.
+    // Export individual messages in the user's mailbox.
     String user = "me";
     String pageToken = null;
-    boolean foundMessages = false;
+    List<Map<String, String>> exportedMessages = new ArrayList<>();
     do {
       Gmail.Users.Messages.List request = service.users().messages().list(user).setMaxResults(100L);
       if (pageToken != null) {
@@ -93,29 +101,64 @@ public class GmailQuickstart {
       List<Message> messages = response.getMessages();
       if (messages != null) {
         for (Message message : messages) {
-          foundMessages = true;
           Message details = service.users().messages().get(user, message.getId())
-              .setFormat("metadata")
-              .setMetadataHeaders(Arrays.asList("From", "Subject", "Date"))
+              .setFormat("full")
               .execute();
-          printMessage(details);
+          Map<String, String> exportedMessage = new LinkedHashMap<>();
+          exportedMessage.put("sender", extractSender(getHeader(details.getPayload(), "From")));
+          exportedMessage.put("subject", getHeader(details.getPayload(), "Subject"));
+          exportedMessage.put("text", getBodyText(details.getPayload()));
+          exportedMessages.add(exportedMessage);
         }
       }
       pageToken = response.getNextPageToken();
     } while (pageToken != null);
 
-    if (!foundMessages) {
+    Files.write(
+        Paths.get(OUTPUT_FILE_PATH),
+        JSON_FACTORY.toPrettyString(exportedMessages).getBytes(StandardCharsets.UTF_8));
+    System.out.println("Saved " + exportedMessages.size() + " messages to " + OUTPUT_FILE_PATH);
+    if (exportedMessages.isEmpty()) {
       System.out.println("No messages found.");
     }
   }
 
-  private static void printMessage(Message message) {
-    MessagePart payload = message.getPayload();
-    System.out.printf("Message ID: %s%n", message.getId());
-    System.out.printf("From: %s%n", getHeader(payload, "From"));
-    System.out.printf("Subject: %s%n", getHeader(payload, "Subject"));
-    System.out.printf("Date: %s%n", getHeader(payload, "Date"));
-    System.out.printf("Snippet: %s%n%n", message.getSnippet());
+  private static String extractSender(String from) {
+    int start = from.lastIndexOf('<');
+    int end = from.indexOf('>', start + 1);
+    if (start >= 0 && end > start) {
+      return from.substring(start + 1, end).trim();
+    }
+    return from.trim();
+  }
+
+  private static String getBodyText(MessagePart payload) {
+    String text = findBodyPart(payload, "text/plain");
+    if (text.isEmpty()) {
+      text = findBodyPart(payload, "text/html");
+    }
+    return text;
+  }
+
+  private static String findBodyPart(MessagePart part, String mimeType) {
+    if (part == null) {
+      return "";
+    }
+    if (mimeType.equalsIgnoreCase(part.getMimeType())
+        && part.getBody() != null
+        && part.getBody().getData() != null) {
+      return new String(
+          Base64.getUrlDecoder().decode(part.getBody().getData()), StandardCharsets.UTF_8);
+    }
+    if (part.getParts() != null) {
+      for (MessagePart child : part.getParts()) {
+        String text = findBodyPart(child, mimeType);
+        if (!text.isEmpty()) {
+          return text;
+        }
+      }
+    }
+    return "";
   }
 
   private static String getHeader(MessagePart payload, String name) {
@@ -126,6 +169,6 @@ public class GmailQuickstart {
         }
       }
     }
-    return "(not available)";
+    return "";
   }
 }
