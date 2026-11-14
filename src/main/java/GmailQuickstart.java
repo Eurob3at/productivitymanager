@@ -22,13 +22,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /* class to demonstrate listing individual Gmail messages */
 public class GmailQuickstart {
@@ -50,7 +50,8 @@ public class GmailQuickstart {
    */
   private static final List<String> SCOPES = Collections.singletonList(GmailScopes.GMAIL_READONLY);
   private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
-  private static final String OUTPUT_FILE_PATH = "src/main/java/resources.json";
+  private static final String OUTPUT_FILE_PATH = "src/main/resources.txt";
+  private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
   /**
    * Creates an authorized Credential object.
@@ -76,9 +77,7 @@ public class GmailQuickstart {
         .setAccessType("offline")
         .build();
     LocalServerReceiver receiver = new LocalServerReceiver.Builder().setPort(8888).build();
-    Credential credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
-    //returns an authorized Credential object.
-    return credential;
+    return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
   }
 
   public static void main(String... args) throws IOException, GeneralSecurityException {
@@ -88,37 +87,41 @@ public class GmailQuickstart {
         .setApplicationName(APPLICATION_NAME)
         .build();
 
-    // Export individual messages in the user's mailbox.
+    // Export the 50 newest messages in the user's mailbox.
     String user = "me";
-    String pageToken = null;
-    List<Map<String, String>> exportedMessages = new ArrayList<>();
-    do {
-      Gmail.Users.Messages.List request = service.users().messages().list(user).setMaxResults(100L);
-      if (pageToken != null) {
-        request.setPageToken(pageToken);
-      }
-      ListMessagesResponse response = request.execute();
-      List<Message> messages = response.getMessages();
-      if (messages != null) {
-        for (Message message : messages) {
-          Message details = service.users().messages().get(user, message.getId())
-              .setFormat("full")
-              .execute();
-          Map<String, String> exportedMessage = new LinkedHashMap<>();
-          exportedMessage.put("sender", extractSender(getHeader(details.getPayload(), "From")));
-          exportedMessage.put("subject", getHeader(details.getPayload(), "Subject"));
-          exportedMessage.put("text", getBodyText(details.getPayload()));
-          exportedMessages.add(exportedMessage);
+    StringBuilder output = new StringBuilder();
+    int exportedCount = 0;
+    ListMessagesResponse response =
+        service.users().messages().list(user).setMaxResults(50L).execute();
+    List<Message> messages = response.getMessages();
+    if (messages != null) {
+      for (Message message : messages) {
+        Message details = service.users().messages().get(user, message.getId())
+            .setFormat("full")
+            .execute();
+        if (details.getInternalDate() == null) {
+          throw new IOException("Message is missing its internal date: " + message.getId());
         }
+        ZonedDateTime receivedAt =
+            Instant.ofEpochMilli(details.getInternalDate()).atZone(ZoneId.systemDefault());
+        if (exportedCount > 0) {
+          output.append("\n\n================ EMAIL ================\n\n");
+        }
+        output.append(extractSender(getHeader(details.getPayload(), "From"))).append('\n')
+            .append(getHeader(details.getPayload(), "Subject")).append('\n')
+            .append(receivedAt.toLocalDate()).append(' ')
+            .append(TIME_FORMATTER.format(receivedAt)).append('\n')
+            .append(details.getId()).append('\n')
+            .append(getBodyText(details.getPayload()));
+        exportedCount++;
       }
-      pageToken = response.getNextPageToken();
-    } while (pageToken != null);
+    }
 
     Files.write(
         Paths.get(OUTPUT_FILE_PATH),
-        JSON_FACTORY.toPrettyString(exportedMessages).getBytes(StandardCharsets.UTF_8));
-    System.out.println("Saved " + exportedMessages.size() + " messages to " + OUTPUT_FILE_PATH);
-    if (exportedMessages.isEmpty()) {
+        output.toString().getBytes(StandardCharsets.UTF_8));
+    System.out.println("Saved " + exportedCount + " messages to " + OUTPUT_FILE_PATH);
+    if (exportedCount == 0) {
       System.out.println("No messages found.");
     }
   }
