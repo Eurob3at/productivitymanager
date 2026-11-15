@@ -455,7 +455,28 @@ body.bgphoto{background:linear-gradient(rgba(6,8,15,.5),rgba(6,8,15,.72)),var(--
    ===================================================================== */
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-/* ---------- sample data (ported from the Flask version) ---------- */
+/* =====================================================================
+   DATA MODEL: how information is meant to arrive.
+   Everything below is filled by PA.load(state) (see BACK END CONNECTION near
+   the bottom). The Python back end builds `state` from your real sources.
+   Dates are local-time strings 'YYYY-MM-DDTHH:MM'. Full field list: README.md
+   and schema.py. Every record below is empty until your data is loaded.
+
+   state = {
+     items:   [Item],          work, events, exams, messages, announcements
+     past:    [PastItem],      graded work (feeds Grades and GPA)
+     courses: [Course],        one per class
+     classes: [ClassSession],  meeting times (drives class check-ins)
+     events:  [ScoutEvent],    cards for the swipe screen
+     notices: [Notice]         pop-ups and suggestions
+   }
+   Item        {id, section, title, course, when, end?, place?, source, detail, kind?}
+   PastItem    {id, section, title, course, when, score|null, points, detail}
+   Course      {name, credits, percent?}
+   ClassSession{id, course, topic, when, end, place?, source?}
+   ScoutEvent  {id, title, course, when, place?, detail, tags[], kind:'fun'|'important'}
+   Notice      {id, title, body, section?, itemId?, item?, actions?[], seconds?}
+   ===================================================================== */
 const NOW=new Date();
 const on=(d,h,m=0)=>{const t=new Date(NOW);t.setDate(t.getDate()+d);t.setHours(h,m,0,0);return t};
 const fromNow=h=>{const t=new Date(NOW.getTime()+h*36e5);t.setMinutes(Math.floor(t.getMinutes()/15)*15,0,0);return t};
@@ -468,49 +489,13 @@ const sections=[
  {slug:'workload',name:'Study suggestions',color:'#8E9BFF',verb:'Starts',blurb:'Suggestions based on your classes and deadlines.'},
  {slug:'announcements',name:'Announcements',color:'#9EDB7A',verb:'Posted',blurb:'Announcements your instructors posted on Canvas.'}];
 sections.forEach(s=>s.color0=s.color); // remembered so Settings can reset colors
-const items=[
-['hw-1','homework','Problem set 7: series and convergence','Calculus II',on(1,23,59),'','Canvas','Problems 1 to 14 from section 11.4. Upload one PDF.'],
-['hw-2','homework','Lab 5 report: op-amp circuits','Intro to ECE',on(2,17),'','Canvas','Include the measured gain table and both oscilloscope captures.'],
-['hw-3','homework','Reading response 4','College Writing',on(3,23,59),'','Canvas','About 400 words on this week’s two readings.'],
-['hw-4','homework','Online homework 9: rotational motion','Physics I',on(4,23,59),'','Canvas','Twelve questions, three attempts each.'],
-['hw-5','homework','Essay draft 2','College Writing',on(8,23,59),'','Canvas','Revised draft with the peer review comments addressed.'],
-['si-1','si-sessions','Calculus II SI session','Calculus II',fromNow(3),'Library, room 1320','Calendar','Topic: ratio and root tests. Bring problem set 7.'],
-['si-2','si-sessions','Physics I SI session','Physics I',on(1,18),'Science Hall 104','Calendar','Topic: torque and angular momentum.'],
-['si-3','si-sessions','Calculus II exam review','Calculus II',on(3,19),'Library, room 1320','Calendar','Longer session covering everything since the last exam.'],
-['ev-1','events','IEEE student chapter meeting','IEEE',on(1,19),'Engineering Lab 2, room 119','Gmail','Soldering workshop after a short general meeting.','fun'],
-['ev-2','events','Engineering career fair','College of Engineering',on(2,10),'Campus Center','Gmail','Runs until 3:00 PM. Bring printed resumes.','important'],
-['ev-3','events','Robotics club build night','Robotics club',on(5,18,30),'Makerspace','Gmail','Drivetrain assembly for the spring competition robot.','fun'],
-['ex-1','exams','Quiz 8','Calculus II',on(2,9,5),'In class','Canvas','Covers sections 11.3 and 11.4. Twenty minutes.'],
-['ex-2','exams','Midterm 2','Physics I',on(6,19),'Science Hall auditorium','Canvas','Chapters 7 to 10. One page of notes allowed.'],
-['ex-3','exams','Lab practical','Intro to ECE',on(10,14,30),'Engineering Lab 1','Canvas','Build and measure a circuit from a schematic.'],
-['ms-1','messages','Re: lab partner swap','Intro to ECE teaching assistant',fromNow(-2),'','Gmail','Asks you to confirm the new lab section by Friday.'],
-['ms-2','messages','Group project meeting time?','College Writing group',fromNow(-6),'','Gmail','Your group wants to pick a time to meet this week.'],
-['ms-3','messages','Advising appointment confirmation','Academic advising',on(-1,15,20),'','Gmail','Reply to confirm or pick another slot.'],
-['an-1','announcements','Midterm 2 room change','Physics I',fromNow(-4),'','Canvas','The exam moved to the Science Hall auditorium.'],
-['an-2','announcements','Thursday office hours moved','Calculus II',on(-1,11,45),'','Canvas','This week only, office hours are 2:00 to 3:30 PM.'],
-['an-3','announcements','Lab 5 report template posted','Intro to ECE',on(-2,16,10),'','Canvas','Use the posted template for the report.']
-].map(a=>({id:a[0],section:a[1],title:a[2],course:a[3],when:a[4],place:a[5],source:a[6],detail:a[7],kind:a[8]}));
-/* ---------- gradebook: courses and past graded work (sample data) ----------
+const items=[]; // Item records. Empty until PA.load() runs.
+/* ---------- gradebook: courses and past graded work ----------
    Replace with real Canvas data by calling PA.setGrades({courses, past}).
    A course grade is points earned / points possible across its graded past
    work, unless the course has its own `percent` (Canvas's current score). */
-let courses=[
- {name:'Calculus II',credits:4},{name:'Physics I',credits:4},{name:'Intro to ECE',credits:4},{name:'College Writing',credits:3}];
-let past=[
-['pa-1','homework','Problem set 6: integration techniques','Calculus II',on(-6,23,59),46,50,'Sections 7.1 to 7.4.'],
-['pa-2','homework','Problem set 5: applications of integrals','Calculus II',on(-13,23,59),44,50,'Sections 6.1 to 6.5.'],
-['pa-3','exams','Quiz 7','Calculus II',on(-5,9,5),18,20,'Covered sections 11.1 and 11.2.'],
-['pa-4','exams','Midterm 1','Calculus II',on(-20,19),84,100,'Chapters 6 and 7.'],
-['pa-5','homework','Online homework 8: momentum','Physics I',on(-3,23,59),27,30,'Ten questions.'],
-['pa-6','homework','Online homework 7: work and energy','Physics I',on(-10,23,59),30,30,'Ten questions.'],
-['pa-7','exams','Midterm 1','Physics I',on(-22,19),78,100,'Chapters 1 to 6.'],
-['pa-8','homework','Lab 4 report: RC circuits','Intro to ECE',on(-7,17),47,50,'Time constant measurements.'],
-['pa-9','homework','Lab 3 report: voltage dividers','Intro to ECE',on(-14,17),45,50,'Measured against calculated values.'],
-['pa-10','exams','Quiz 3','Intro to ECE',on(-9,14,30),9,10,'Kirchhoff’s laws.'],
-['pa-11','homework','Essay draft 1','College Writing',on(-12,23,59),88,100,'First full draft.'],
-['pa-12','homework','Reading response 2','College Writing',on(-11,23,59),10,10,'About 400 words.'],
-['pa-13','homework','Reading response 3','College Writing',on(-4,23,59),null,10,'About 400 words.']
-].map(a=>({id:a[0],section:a[1],title:a[2],course:a[3],when:a[4],score:a[5],points:a[6],detail:a[7]}));
+let courses=[]; // Course: {name, credits, percent?}
+let past=[];    // PastItem: {id, section, title, course, when, score|null, points, detail}
 /* percent floor, letter, grade points (standard 4.0 scale) */
 const LETTERS=[[93,'A',4],[90,'A-',3.7],[87,'B+',3.3],[83,'B',3],[80,'B-',2.7],[77,'C+',2.3],[73,'C',2],[70,'C-',1.7],[67,'D+',1.3],[60,'D',1],[0,'F',0]];
 function courseGrade(c){
@@ -781,7 +766,7 @@ function renderPage(){
     +sortControl(s.slug,order)+readAllMarkup(s,open)+sectionNoticesMarkup(s.slug)+groups.map(g=>grp(g[0],g[1])).join('')
     +(saved.length?'<section class="group"><h2>Saved for later</h2><ul class="items">'+saved.map(srow).join('')+'</ul></section>':'')
     +(!open.length&&!done.length&&!old.length&&!saved.length?'<p class="empty">Nothing here yet. Items show up once a source has something for this section.</p>':'')
-    +(done.length?grp('Done',done):'')+(old.length?'<section class="group"><h2>Past</h2><ul class="items">'+old.map(prow).join('')+'</ul></section>':'')+'</div><footer class="foot"><p>Showing sample data. Gmail, Canvas and your calendar are not connected yet.</p></footer>';decorateEventSearch();
+    +(done.length?grp('Done',done):'')+(old.length?'<section class="group"><h2>Past</h2><ul class="items">'+old.map(prow).join('')+'</ul></section>':'')+'</div><footer class="foot"><p>'+esc(PA.status)+'</p></footer>';decorateEventSearch();
 }
 $('page').addEventListener('click',e=>{
   const noticeButton=e.target.closest('[data-notice-id]');
@@ -834,6 +819,7 @@ const PA=window.PA={
   askCheckIn:c=>askCheckIn(c),
   loadSurvey:sv=>{if(!sv||!Array.isArray(sv.questions))throw new Error('A survey needs a questions list.');surveyModal(sv)},
   addBubble:c=>addBubble(c),
+  status:'Not connected to your data yet. Start the Python back end (see README.md).',
   addItems(list){(list||[]).forEach(x=>{if(SEC(x.section))items.push(cleanItem(x,x.section))});refresh()},
   setGrades(g){if(g.courses)courses=g.courses;if(g.past)past=g.past.map(p=>({...p,when:new Date(p.when)}));refresh()},
   setPlanetColor:(slug,color)=>setPlanetColor(slug,color),
@@ -864,7 +850,7 @@ const PA=window.PA={
 function cleanItem(x,slug){
   let id=String(x.id||slug+'-'+(items.length+1)).replace(/[^\w-]/g,'');while(items.some(i=>i.id===id))id+='x';
   let w=new Date(x.when);if(isNaN(w))w=on(1,12);
-  return{id,section:slug,title:String(x.title||'Untitled'),course:String(x.course||SEC(slug).name),when:w,place:String(x.place||''),source:String(x.source||'Gemini'),detail:String(x.detail||''),kind:x.kind};
+  return{id,section:slug,title:String(x.title||'Untitled'),course:String(x.course||SEC(slug).name),when:w,place:String(x.place||''),source:String(x.source||'Manual'),detail:String(x.detail||''),kind:x.kind,end:x.end&&!isNaN(new Date(x.end))?new Date(x.end):undefined};
 }
 /* redraw whatever is on screen after data changes */
 function refresh(){syncCounts();if($('schedule').classList.contains('open'))renderCalendar();if(mode==='focus'){renderPage();renderNav()}if(nwinOpen())renderNwin();syncToasts();queueSave();}
@@ -881,7 +867,7 @@ function setPlanetColor(slug,color){
    The user never sees a prompt. See the INTEGRATION GUIDE at the top.
    ===================================================================== */
 const GEMINI={
-  endpoint:'', // <-- put your backend URL here to go live, e.g. '/api/gemini'
+  endpoint:'/api/ai', // the Python back end forwards this to your AI provider (see ai.py)
 
   /* THE CONNECTION POINT. Returns Gemini's reply text, or null in demo mode. */
   async send(task,prompt){
@@ -892,43 +878,37 @@ const GEMINI={
   },
 
   /* MODEL CODE: a perfect reply for each task. Embedded in every prompt so
-     replies keep this exact shape, and used as the reply in demo mode. */
+     replies keep this exact shape. The values are placeholders, not data. */
   models:{
     /* Bubble Builder -> PA.addBubble */
-    bubble:(input={})=>({slug:'study-groups',name:(input.description||'').trim().slice(0,24)||'Study groups',color:input.color||'#FFD166',verb:'Starts',blurb:'Study groups and tutoring office hours.',
-      items:[{id:'sg-1',title:'Calculus study group',course:'Calculus II',when:iso(on(2,18)),place:'Library, room 204',source:'Calendar',detail:'Bring problem set 7.'},
-             {id:'sg-2',title:'Physics tutoring hours',course:'Physics I',when:iso(on(4,15)),place:'Science Hall 104',source:'Gmail',detail:'Drop in, no sign-up.'}]}),
+    bubble:(input={})=>({slug:'kebab-case-id',name:(input.description||'').trim().slice(0,24)||'Short name',color:input.color||'#RRGGBB',verb:'Due | Starts | Received | Posted',blurb:'One sentence about this category.',
+      items:[{id:'unique-id',title:'What it is',course:'Class or group',when:'YYYY-MM-DDTHH:MM',place:'Where, or empty',source:'Canvas | Gmail | Calendar',detail:'One line shown when opened'}]}),
     /* MODEL POP-UP: one temporary pop-up for the top right corner. "seconds" = how long it stays. */
-    popup:()=>({id:'notice-room-change',title:'Midterm 2 moved rooms',body:'Physics I. The exam is now in the Science Hall auditorium.',itemId:'an-1',seconds:12}),
-    /* Notice Writer -> PA.notify for each one.
-       A notice with "actions" is a SUGGESTION. Use only the actions that fit the new data.
-       Order here: SI session, event, homework, plain pop-up. */
+    popup:()=>({id:'unique-id',title:'Under 50 characters',body:'One short sentence.',itemId:'id of a related item (optional)',seconds:5}),
+    /* Notice Writer -> PA.notify for each one. A notice with "actions" is a SUGGESTION.
+       Use only the actions that fit: add, interested, star, start, remind, dismiss. */
     notices:()=>[
-      {id:'sug-si',section:'si-sessions',title:'New SI session for Calculus II',body:'A session on power series was posted for '+dateLabel(on(5,19))+' at 7:00 PM. Want it on your schedule?',actions:['add','dismiss'],
-       item:{id:'si-new-1',title:'Calculus II SI session: power series',course:'Calculus II',when:iso(on(5,19)),place:'Library, room 1320',source:'Calendar',detail:'Extra session before quiz 9.'}},
-      {id:'sug-event',section:'events',title:'Hack night at the Makerspace',body:'It looks like your kind of thing. Interested?',actions:['interested','star','dismiss'],
-       item:{id:'ev-new-1',title:'Hack night',course:'Makerspace',when:iso(on(6,19)),place:'Makerspace',source:'Gmail',detail:'Bring a project or join a team. Pizza provided.',kind:'fun'}},
-      {id:'sug-hw',title:'Problem set 7 is due tomorrow',body:'Calculus II, 11:59 PM. Ready to start?',itemId:'hw-1',actions:['start','remind']},
+      {id:'unique-id',section:'section slug',title:'Short title',body:'One sentence.',actions:['add','dismiss'],item:{id:'unique-id',title:'What it is',course:'Class or group',when:'YYYY-MM-DDTHH:MM',place:'Where, or empty',source:'Canvas | Gmail | Calendar',detail:'One line shown when opened'}},
+      {id:'unique-id',section:'events',title:'Short title',body:'One sentence.',actions:['interested','star','dismiss'],item:{...{id:'unique-id',title:'What it is',course:'Class or group',when:'YYYY-MM-DDTHH:MM',place:'Where, or empty',source:'Canvas | Gmail | Calendar',detail:'One line shown when opened'},kind:'fun | important'}},
+      {id:'unique-id',title:'Short title',body:'One sentence.',itemId:'id of an existing item',actions:['start','remind']},
       GEMINI.models.popup()],
     /* Event Scout -> PA.offerEvents. Cards for the swipe screen, already filtered to input.kind. */
     discover:(input={})=>[
-      {id:'sc-1',title:'Open mic night',course:'Student Union',when:iso(on(3,20)),place:'Student Union stage',detail:'Music, comedy and poetry. Sign up at the door.',tags:['music','comedy'],kind:'fun'},
-      {id:'sc-2',title:'Board game cafe night',course:'Tabletop club',when:iso(on(4,18,30)),place:'Campus Center, room 163',detail:'Over a hundred games and free snacks.',tags:['games','social'],kind:'fun'},
-      {id:'sc-3',title:'Intramural volleyball',course:'Campus Recreation',when:iso(on(5,19)),place:'Recreation Center, court 2',detail:'Drop in and get placed on a team.',tags:['sports','fitness'],kind:'fun'},
-      {id:'sc-4',title:'Robot sumo showdown',course:'Robotics club',when:iso(on(7,17)),place:'Makerspace',detail:'Watch, or enter a robot under 500 grams.',tags:['robotics','engineering'],kind:'fun'},
-      {id:'sc-5',title:'Resume review drop-in',course:'Career Services',when:iso(on(2,13)),place:'Career Center',detail:'Fifteen-minute reviews before the career fair.',tags:['careers','resume'],kind:'important'},
-      {id:'sc-6',title:'Spring registration info session',course:'Academic advising',when:iso(on(4,16)),place:'Engineering Lab 2, room 119',detail:'How to plan next semester’s engineering courses.',tags:['advising','registration'],kind:'important'},
-      {id:'sc-7',title:'Internship panel: first-year engineers',course:'College of Engineering',when:iso(on(6,17,30)),place:'Engineering auditorium',detail:'Students talk about landing a first internship.',tags:['careers','engineering'],kind:'important'},
-      {id:'sc-8',title:'Scholarship application workshop',course:'Financial Aid',when:iso(on(8,15)),place:'Library, room 204',detail:'Help with essays and deadlines.',tags:['scholarships','money'],kind:'important'}
-    ].filter(e=>!input.kind||e.kind===input.kind),
+      {id:'unique-id',title:'Event name',course:'Host or group',when:'YYYY-MM-DDTHH:MM',place:'Where',detail:'One or two sentences.',tags:['topic'],kind:input.kind||'fun | important'}],
     /* Survey Writer -> PA.loadSurvey */
     survey:()=>({title:'Tune the app to you',questions:[
       {id:'first',text:'Which section do you check first each day?',type:'choice',options:sections.map(s=>s.name)},
       {id:'remind',text:'How early should reminders appear?',type:'choice',options:['The same day','1 day before','2 to 3 days before']},
       {id:'load',text:'How heavy does your week feel right now?',type:'scale',min:1,max:5},
-      {id:'notes',text:'Anything else Gemini should know?',type:'text'}]}),
-    /* Calendar Exporter -> file text (this is the start of a valid .ics file) */
-    calendar:()=>'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//HeadSpace//EN\nBEGIN:VEVENT\nUID:hw-1@headspace\nDTSTART:20261115T235900\nDTEND:20261116T001400\nSUMMARY:Homework: Problem set 7\nEND:VEVENT\nEND:VCALENDAR'
+      {id:'notes',text:'Anything else should the assistant know?',type:'text'}]}),
+    /* Calendar Exporter -> file text (the shape of a valid .ics file) */
+    calendar:()=>'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//HeadSpace//EN\nBEGIN:VEVENT\nUID:item-id@headspace\nDTSTART:YYYYMMDDTHHMMSS\nDTEND:YYYYMMDDTHHMMSS\nSUMMARY:Section: Title\nEND:VEVENT\nEND:VCALENDAR'
+  },
+  /* What each task returns when the AI is NOT connected. Nothing invented. */
+  empty:{
+    bubble:(input={})=>({slug:'',name:(input.description||'').trim().slice(0,24)||'New planet',color:input.color||'#FFD166',verb:'Starts',blurb:'',items:[]}),
+    notices:()=>[],
+    discover:()=>[]
   },
 
   /* HIDDEN PROMPTS: one per task. Each ends with the model code. */
@@ -948,10 +928,10 @@ const GEMINI={
     try{text=await GEMINI.send(task,prompt)}catch(e){console.warn('GEMINI.send failed, using model code.',e)}
     if(task==='calendar')return{live:text!=null,data:text};
     if(text!=null){try{return{live:true,data:JSON.parse(String(text).replace(/```json|```/g,'').trim())}}catch(e){console.warn('Gemini reply was not valid JSON, using model code.')}}
-    return{live:false,data:GEMINI.models[task](input)};
+    return{live:false,data:(GEMINI.empty[task]||GEMINI.models[task])(input)};
   }
 };
-const DEMO_NOTE='Gemini is not connected yet, so this is the built-in example.';
+const DEMO_NOTE='The AI is not connected yet, so this was made from what you typed.';
 
 /* ---------- notifications: pop-ups (top right), suggestions, and the notifications window ---------- */
 const notices=[];
@@ -1235,7 +1215,7 @@ function gradesModal(){
     +sortControl('grades',sortOrders.grades||'title')+sortedCourses().map(c=>{const cg=courseGrade(c),work=sorted(past.filter(p=>p.course===c.name),'latest');
       return '<details class="course"><summary><span>'+esc(c.name)+' <span class="mut">'+c.credits+' credits</span></span><span>'+(cg?cg.pct.toFixed(1)+'%':'No grades yet')+'</span><b>'+(cg?cg.letter:'')+'</b><span class="meter"><i style="width:'+(cg?Math.min(100,cg.pct):0)+'%"></i></span></summary><ul>'
         +(work.map(p=>'<li><span>'+esc(p.title)+'</span><span>'+shortDate(p.when)+'</span><span>'+scoreText(p)+'</span></li>').join('')||'<li><span>No past work yet</span><span></span><span></span></li>')+'</ul></details>'}).join('')
-    +'<p class="mut">Sample grades. Open a course to see its past work. Real grades arrive once Canvas is connected.</p>',true);
+    +'<p class="mut">Open a course to see its past work. Grades come from your Canvas data once it is connected.</p>',true);
 }
 $('gradebtn').onclick=()=>{closePop();gradesModal()};
 
@@ -1397,7 +1377,7 @@ function showCard(){
       +'<button class="dstar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.8z"/></svg>Save for later</button><p class="dhint">Drag the card left to pass or right to add it. Or use the buttons below.</p>';
     c.querySelector('.dstar').onclick=()=>choose('star');
   }else{
-    c.innerHTML='<h2>That’s everything for now</h2><p class="dust">'+(dlive?'Check back later for more events.':'These were sample events. '+DEMO_NOTE)+'</p><button class="btn2" style="align-self:flex-start;margin-top:.6rem">Back to Events</button>';
+    c.innerHTML='<h2>That’s everything for now</h2><p class="dust">'+(dlive?'Check back later for more events.':'No events to show yet. Connect your data and the AI to see them here.')+'</p><button class="btn2" style="align-self:flex-start;margin-top:.6rem">Back to Events</button>';
     c.querySelector('button').onclick=endSwipes;
   }
   box.replaceChildren(c);
@@ -1468,7 +1448,7 @@ $('devbtn').onclick=()=>dev.classList.toggle('show');
 function playIntro(){
   const cover=$('intro'),word=$('intro-word'),letter=$('intro-s');
   const finish=()=>{cover.remove();};
-  let skip=false;try{skip=!!JSON.parse(localStorage.getItem('headspace.snapshot.v1')||'{}').preferences?.opt?.skipIntro}catch(e){}
+  let skip=false;try{skip=!!JSON.parse(localStorage.getItem('headspace.snapshot.v2')||'{}').preferences?.opt?.skipIntro}catch(e){}
   if(skip){finish();return}
   if(RM){setTimeout(finish,400);return}
   setTimeout(()=>{
@@ -1510,23 +1490,14 @@ function wireEventDrag(card){
 
 /* ---------- one schedule source: calendar, export, timed class check-ins ----------
    classSessions are dated class meetings, NOT inferred from assignment due times.
-   PA.setClassSchedule([{id,course,topic,when,end,place?}]) replaces sample classes.
+   PA.setClassSchedule([{id,course,topic,when,end,place?}]) replaces the class list.
    The backend should expand recurring meetings and provide a topic for each one.
    The versioned browser snapshot restores dated meetings and accepted work on reload. */
 let classSessions=[];
-let classScheduleIsSample=true;
+let classScheduleIsSample=false;
 const studyBlocks=[];
 const calendarImports=[]; // events read from .ics / .csv files dropped in the Calendar menu
-const classTimes=[
-  {course:'Calculus II',topic:'Series and convergence',hour:9,minute:0,days:[1,3,5]},
-  {course:'Physics I',topic:'Torque and angular momentum',hour:11,minute:0,days:[1,3,5]},
-  {course:'Intro to ECE',topic:'Op-amp circuits',hour:14,minute:0,days:[2,4]},
-  {course:'College Writing',topic:'Revising an essay draft',hour:10,minute:0,days:[2,4]}
-];
-for(let d=0;d<14;d++)classTimes.forEach((c,i)=>{
-  const when=on(d,c.hour,c.minute);
-  if(c.days.includes(when.getDay()))classSessions.push({id:'class-'+d+'-'+i,section:'classes',title:c.course,course:c.course,topic:c.topic,when,end:new Date(+when+50*6e4),place:'Sample classroom',source:'Sample schedule',detail:c.topic});
-});
+// ClassSession records arrive through PA.setClassSchedule / PA.load({classes}).
 function scheduleItems(includeDone=calendarIncludeDone){
   // Received messages and posted announcements are not calendar appointments.
   return [...items.filter(i=>['Due','Starts'].includes(SEC(i.section)?.verb)&&i.section!=='workload'&&(includeDone||!DONE.has(i.id))),...classSessions,...calendarImports,...studyBlocks.filter(i=>includeDone||!DONE.has(i.id))].sort((a,b)=>a.when-b.when);
@@ -1551,7 +1522,7 @@ function renderCalendar() {
   const first=new Date(year,month,1).getDay(),days=new Date(year,month+1,0).getDate();
   const colors=stressColors();
   const tabs='<div class="tabs" role="tablist"><button role="tab" data-calendar-tab="calendar" aria-selected="'+(calendarTab==='calendar')+'">My calendar</button><button role="tab" data-calendar-tab="recommended" aria-selected="'+(calendarTab==='recommended')+'">Recommended schedule</button></div>';
-  $('schedule').innerHTML='<div class="cal-head"><h2>Schedule</h2><button class="btn" id="cal-close">Close schedule</button></div>'+tabs+'<p class="mut">'+(classScheduleIsSample?'Sample classes and deadlines. ':'')+'Only accepted suggestions appear in your calendar and export.</p><div id="calendar-content"></div>';
+  $('schedule').innerHTML='<div class="cal-head"><h2>Schedule</h2><button class="btn" id="cal-close">Close schedule</button></div>'+tabs+'<p class="mut">'+''+'Only accepted suggestions appear in your calendar and export.</p><div id="calendar-content"></div>';
   $('cal-close').onclick=closeSchedule;
   $('schedule').querySelectorAll('[data-calendar-tab]').forEach(button=>button.onclick=()=>{
     calendarTab=button.dataset.calendarTab;
@@ -1866,7 +1837,7 @@ function findStudySlot(deadline,minutes,reserved,now=new Date()) {
 /* Browser persistence. Save one versioned snapshot so all counts and menus
    restore together. Never serialize Canvas tokens, file attachments or APIs.
    Preferences are per-browser; the Python wrapper does not upload them. */
-const STORAGE_KEY='headspace.snapshot.v1';
+const STORAGE_KEY='headspace.snapshot.v2';
 let saveTimer=null,restoring=false,storageWarningShown=false;
 function queueSave() {
   if(!appReady||restoring)return;
@@ -1915,7 +1886,7 @@ function restoreSavedData(raw=null) {
     if(Array.isArray(state.past))past=state.past.map(dated);
     restoreList(starred,state.starred,dated);restoreList(studyBlocks,state.studyBlocks,dated);restoreList(calendarImports,state.calendarImports,dated);
     if(Array.isArray(state.classSessions))classSessions=state.classSessions.map(dated);
-    classScheduleIsSample=state.classScheduleIsSample!==false;
+    classScheduleIsSample=false;
     const restoreSet=(target,list)=>{if(Array.isArray(list)){target.clear();list.forEach(id=>target.add(id));}};
     restoreSet(DONE,state.done);restoreSet(swiped,state.swiped);restoreSet(recommendationDecisions,state.decisions);
     restoreList(recommendations,state.recommendations,r=>({...r,item:dated(r.item)}));
@@ -2056,13 +2027,48 @@ async function importCalendarFiles(fs){
   if(added){closePop();openSchedule()}
 }
 
+/* ===================================================================
+   BACK END CONNECTION
+   The page asks the Python back end for `state` (see DATA MODEL at the top)
+   and again every BACKEND.pollSeconds. Backend records replace the previous
+   backend records; items you add inside the app (swipes, suggestions) stay.
+   Every answer you give is POSTed to BACKEND.report.
+   You can also call PA.load(state) yourself from the console or a script.
+   =================================================================== */
+const BACKEND={url:'/api/state',report:'/api/report',pollSeconds:60,connected:false};
+const OFFLINE='Not connected to your data yet. Start the Python back end (see README.md).';
+PA.load=function(st){
+  st=st||{};
+  if(Array.isArray(st.items)){
+    for(let k=items.length-1;k>=0;k--)if(items[k].be)items.splice(k,1);
+    st.items.forEach(x=>{if(x&&SEC(x.section)&&!items.some(i=>i.id===x.id)){const it=cleanItem(x,x.section);it.be=true;items.push(it)}else console.warn('PA.load skipped an item (unknown section or duplicate id):',x)});
+  }
+  if(Array.isArray(st.courses))courses=st.courses.filter(c=>c&&c.name).map(c=>({name:String(c.name),credits:+c.credits||3,percent:c.percent==null?undefined:+c.percent}));
+  if(Array.isArray(st.past))past=st.past.filter(p=>p&&p.id).map(p=>({...p,when:new Date(p.when),score:p.score==null?null:+p.score,points:+p.points||0}));
+  if(Array.isArray(st.classes)){try{PA.setClassSchedule(st.classes)}catch(e){console.warn('PA.load classes:',e.message)}}
+  if(Array.isArray(st.events))offerEvents(st.events);
+  if(Array.isArray(st.notices))st.notices.forEach(n=>{if(n&&n.id&&!notices.some(x=>x.id===n.id))notify(n)});
+  if(Array.isArray(st.warnings)&&st.warnings.length)console.warn('Back end warnings:',st.warnings);
+  buildRecommendations();refresh();
+};
+PA.onReport=e=>{if(BACKEND.connected)fetch(BACKEND.report,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)}).catch(()=>{})};
+async function loadFromBackend(){
+  try{
+    const r=await fetch(BACKEND.url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();BACKEND.connected=true;PA.load(data);
+    PA.status='Showing your data. Last updated '+clock(new Date())+'.';
+  }catch(e){BACKEND.connected=false;PA.status=OFFLINE;console.warn('Back end not reachable:',e.message)}
+  if(mode==='focus')renderPage();
+}
+
 /* ---------- start ---------- */
 restoreSavedData();
 layout();sections.forEach(addBody);applySavedAppearance();appReady=true;installListSorts();buildRecommendations();syncCounts();buildDev();requestAnimationFrame(tick);
 queueSave();
 $('cluster').onclick=()=>mode==='discover'?endSwipes():setMode('home'); // clicking the group of planets goes back to all planets
 /* EXAMPLE NOTIFICATION: shortly after the page opens, ask the Notice Writer and show its first notice. */
-setTimeout(()=>GEMINI.run('notices').then(r=>{if(Array.isArray(r.data)&&r.data[0]&&!notices.some(n=>n.id===r.data[0].id))notify(r.data[0])}),1500);
+loadFromBackend();if(BACKEND.pollSeconds)setInterval(loadFromBackend,BACKEND.pollSeconds*1000);
+setTimeout(()=>GEMINI.run('notices').then(r=>{if(r.live&&Array.isArray(r.data))r.data.forEach(n=>{if(n&&n.id&&!notices.some(x=>x.id===n.id))notify(n)})}),1500);
 
 
 </script>
