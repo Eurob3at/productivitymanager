@@ -517,7 +517,7 @@ function groupName(d){const n=daysAway(d);if(n<-1)return'Earlier';if(n>7)return'
 function mix(a,b,t){a=a.replace('#','');b=b.replace('#','');return'#'+[0,2,4].map(i=>Math.round(parseInt(a.substr(i,2),16)*(1-t)+parseInt(b.substr(i,2),16)*t).toString(16).padStart(2,'0')).join('')}
 const rgb=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
 const openCount=slug=>items.filter(i=>i.section===slug&&!DONE.has(i.id)).length;
-const enrich=it=>{const s=SEC(it.section),g=groupName(it.when);return{...it,done:DONE.has(it.id),group:g,phrase:whenPhrase(s.verb,it.when),clock:clock(it.when),date:['Earlier','In the next week','Later'].includes(g)?dateLabel(it.when):''}};
+const enrich=it=>{const s=SEC(it.section),g=groupName(it.when),spansDays=it.end&&sod(it.when).getTime()!==sod(it.end).getTime();return{...it,done:DONE.has(it.id),group:g,phrase:whenPhrase(s.verb,it.when),clock:clock(it.when),timeLabel:it.allDay?'All day':it.end?clock(it.when)+' – '+clock(it.end):clock(it.when),date:spansDays?dateLabel(it.when)+' – '+dateLabel(it.end):['Earlier','In the next week','Later'].includes(g)?dateLabel(it.when):''}};
 /* ---------- state ---------- */
 const stage=$('stage'),cb=$('cb').getContext('2d'),cf=$('cf').getContext('2d');
 let W=1,H=1,mt=64,mb=78,fh=1,cy=1,te=64,R=80,mode='home',fi=-1,evKind='fun',inited=false;
@@ -753,7 +753,7 @@ function renderPage(){
   const open=sorted(mine.filter(i=>!i.done),order);
   const groups=[];open.forEach(i=>{if(!['soonest','latest'].includes(order))i.group='Open';const l=groups[groups.length-1];l&&l[0]===i.group?l[1].push(i):groups.push([i.group,[i]])});
   const done=sorted(mine.filter(i=>i.done),order);
-  const row=i=>'<li class="item'+(i.done?' is-done':'')+'" id="item-'+esc(i.id)+'"><span><button class="check" type="button" data-id="'+esc(i.id)+'" aria-pressed="'+i.done+'" aria-label="'+(i.done?'Mark not done':'Mark done')+': '+esc(i.title)+'"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg></button></span><details data-course="'+esc(i.course)+'"><summary><span class="item-main"><span class="item-title">'+esc(i.title)+'</span><span class="item-meta">'+esc(i.course)+(i.place?', '+esc(i.place):'')+'</span></span><span class="item-time">'+(i.date?'<span class="item-date">'+i.date+'</span>':'')+'<span>'+i.clock+'</span></span></summary><div class="item-more"><p>'+esc(i.detail)+'</p><p class="item-source">'+i.phrase+'. From '+esc(i.source)+'.</p></div></details></li>';
+  const row=i=>'<li class="item'+(i.done?' is-done':'')+'" id="item-'+esc(i.id)+'"><span><button class="check" type="button" data-id="'+esc(i.id)+'" aria-pressed="'+i.done+'" aria-label="'+(i.done?'Mark not done':'Mark done')+': '+esc(i.title)+'"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg></button></span><details data-course="'+esc(i.course)+'"><summary><span class="item-main"><span class="item-title">'+esc(i.title)+'</span><span class="item-meta">'+esc(i.course)+(i.place?', '+esc(i.place):'')+'</span></span><span class="item-time">'+(i.date?'<span class="item-date">'+i.date+'</span>':'')+'<span>'+i.timeLabel+'</span></span></summary><div class="item-more"><p>'+esc(i.detail)+'</p><p class="item-source">'+i.phrase+'. From '+esc(i.source)+'.</p></div></details></li>';
   const grp=(n,l)=>'<section class="group"><h2>'+n+'</h2><ul class="items">'+l.map(row).join('')+'</ul></section>';
   /* SAVED FOR LATER: events starred on the swipe screen or from a suggestion */
   const saved=s.slug==='events'?sorted(starred.filter(e=>e.kind===evKind),order):[];
@@ -850,7 +850,7 @@ const PA=window.PA={
 function cleanItem(x,slug){
   let id=String(x.id||slug+'-'+(items.length+1)).replace(/[^\w-]/g,'');while(items.some(i=>i.id===id))id+='x';
   let w=new Date(x.when);if(isNaN(w))w=on(1,12);
-  return{id,section:slug,title:String(x.title||'Untitled'),course:String(x.course||SEC(slug).name),when:w,place:String(x.place||''),source:String(x.source||'Manual'),detail:String(x.detail||''),kind:x.kind,end:x.end&&!isNaN(new Date(x.end))?new Date(x.end):undefined};
+  return{id,section:slug,title:String(x.title||'Untitled'),course:String(x.course||SEC(slug).name),when:w,place:String(x.place||''),source:String(x.source||'Manual'),detail:String(x.detail||''),kind:x.kind,end:x.end&&!isNaN(new Date(x.end))?new Date(x.end):undefined,...(x.finalEvent?{finalEvent:true}:{}),...(x.allDay?{allDay:true}:{})};
 }
 /* redraw whatever is on screen after data changes */
 function refresh(){syncCounts();if($('schedule').classList.contains('open'))renderCalendar();if(mode==='focus'){renderPage();renderNav()}if(nwinOpen())renderNwin();syncToasts();queueSave();}
@@ -1289,7 +1289,10 @@ const PANES={
     $('cs2').onclick=()=>{PA.setCanvasToken('','');settingsModal()};
   },
   other(p){
-    p.innerHTML='<h4>Accounts</h4><p class="mut">Gmail and Google Calendar: coming soon.</p><h4>Gemini</h4><p class="mut">'+(GEMINI.endpoint?'Connected.':'Not connected. The app uses built-in examples until it is.')+'</p><div class="r"><button class="btn" id="on1">Ask Gemini for notifications</button><button class="btn" id="on2">Open the Dev tester</button></div><h4>Reset</h4><div class="r"><button class="btn" id="or1">Mark everything not done</button></div>';
+    p.innerHTML='<h4>Events, exams and email events</h4><p class="mut" id="final-events-status"></p><div class="r"><button class="btn" id="final-events-pick">Choose final_events.json</button><input type="file" id="final-events-file" accept=".json,application/json" hidden></div><h4>Accounts</h4><p class="mut">Gmail and Google Calendar: coming soon.</p><h4>Gemini</h4><p class="mut">'+(GEMINI.endpoint?'Connected.':'Not connected. The app uses built-in examples until it is.')+'</p><div class="r"><button class="btn" id="on1">Ask Gemini for notifications</button><button class="btn" id="on2">Open the Dev tester</button></div><h4>Reset</h4><div class="r"><button class="btn" id="or1">Mark everything not done</button></div>';
+    $('final-events-status').textContent=finalEventsStatus;
+    $('final-events-pick').onclick=()=>$('final-events-file').click();
+    $('final-events-file').onchange=event=>{const input=event.currentTarget,file=input.files?.[0];input.value='';if(file)loadFinalEventsFile(file)};
     $('on1').onclick=async()=>{const r=await GEMINI.run('notices');closeModal();(Array.isArray(r.data)?r.data:[]).slice(0,3).reverse().forEach(notify)};
     $('on2').onclick=()=>{closeModal();dev.classList.add('show')};
     $('or1').onclick=()=>{DONE.clear();refresh()};
@@ -1514,6 +1517,11 @@ PA.setClassSchedule=list=>{
 PA.getSchedule=()=>scheduleItems().map(i=>({...i}));
 let calendarMonth=new Date(NOW.getFullYear(),NOW.getMonth(),1),calendarDate=sod(NOW),calendarIncludeDone=false;
 const sameDay=(a,b)=>sod(a).getTime()===sod(b).getTime();
+const occursOnDay=(item,date)=>{
+  if(item.allDay&&!item.end)return sameDay(item.when,date);
+  const start=sod(date),end=new Date(start);end.setDate(end.getDate()+1);
+  return item.when<end&&scheduleEnd(item)>start;
+};
 function openSchedule(){renderCalendar();$('schedule').classList.add('open');document.body.classList.add('sched-open');$('schedule').inert=false;$('schedule-toggle').setAttribute('aria-expanded','true');$('cal-close').focus()}
 function closeSchedule(){$('schedule').classList.remove('open');document.body.classList.remove('sched-open');$('schedule').inert=true;$('schedule-toggle').setAttribute('aria-expanded','false');$('schedule-toggle').focus()}
 $('schedule-toggle').onclick=openSchedule;$('sched-scrim').onclick=closeSchedule;
@@ -1542,12 +1550,12 @@ function renderCalendar() {
     return;
   }
   content.innerHTML='<div class="cal-head"><button class="btn" id="cal-prev" aria-label="Previous month">‹</button><h3>'+calendarMonth.toLocaleDateString('en-US',{month:'long',year:'numeric'})+'</h3><button class="btn" id="cal-next" aria-label="Next month">›</button></div><div class="r"><button class="btn" id="cal-today">Today</button><label class="mut"><input id="cal-done" type="checkbox" '+(calendarIncludeDone?'checked':'')+'> Include completed items</label><button class="btn" id="cal-export">Export calendar</button></div><div class="stress-key"><span>Light</span><i style="background:linear-gradient(90deg,'+colors.join(',')+')"></i><span>Busy</span><span class="mut">Priority-weighted workload · 0–100</span></div><div class="cal-grid">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>'<div class="cal-weekday">'+day+'</div>').join('')+Array.from({length:first},()=>'<div></div>').join('')+Array.from({length:days},(_,index)=>{
-    const date=new Date(year,month,index+1),count=list.filter(item=>sameDay(item.when,date)).length;
+    const date=new Date(year,month,index+1),count=list.filter(item=>occursOnDay(item,date)).length;
     const stress=Math.round(dayStress(date)*100),color=stressColor(stress/100);
     return '<button class="cal-day'+(sameDay(date,new Date())?' today':'')+'" style="--stress:'+color+'" data-day="'+(index+1)+'" aria-pressed="'+sameDay(date,calendarDate)+'" aria-label="'+dateLabel(date)+', '+count+' items, workload '+stress+' out of 100">'+(index+1)+'<small>'+count+' items</small><span class="stress-score">'+stress+'</span></button>';
   }).join('')+'</div><div class="cal-head"><h3>'+dateLabel(calendarDate)+'</h3>'+sortControl('calendar',sortOrders.calendar||'soonest')+'</div><div id="cal-agenda"></div>';
-  const dayItems=sorted(list.filter(item=>sameDay(item.when,calendarDate)),sortOrders.calendar||'soonest');
-  $('cal-agenda').innerHTML=dayItems.length?dayItems.map(item=>'<article class="cal-entry" style="--c:'+(SEC(item.section)?.color||'#8e9bff')+'"><b>'+esc(item.title)+'</b><p>'+clock(item.when)+' – '+clock(scheduleEnd(item))+' · '+esc(item.course)+'</p><p>'+esc(item.detail||'')+'</p></article>').join(''):'<p class="mut">Nothing scheduled for this day.</p>';
+  const dayItems=sorted(list.filter(item=>occursOnDay(item,calendarDate)),sortOrders.calendar||'soonest');
+  $('cal-agenda').innerHTML=dayItems.length?dayItems.map(item=>'<article class="cal-entry" style="--c:'+(SEC(item.section)?.color||'#8e9bff')+'"><b>'+esc(item.title)+'</b><p>'+(item.allDay?'All day':clock(item.when)+' – '+clock(scheduleEnd(item)))+' · '+esc(item.course)+'</p><p>'+esc(item.detail||'')+'</p></article>').join(''):'<p class="mut">Nothing scheduled for this day.</p>';
   const move=amount=>{calendarMonth=new Date(year,month+amount,1);calendarDate=new Date(calendarMonth);renderCalendar();};
   $('cal-prev').onclick=()=>move(-1);$('cal-next').onclick=()=>move(1);
   $('cal-today').onclick=()=>{calendarDate=sod(new Date());calendarMonth=new Date(calendarDate.getFullYear(),calendarDate.getMonth(),1);renderCalendar();};
@@ -2037,6 +2045,85 @@ async function importCalendarFiles(fs){
    =================================================================== */
 const BACKEND={url:'/api/state',report:'/api/report',pollSeconds:60,connected:false};
 const OFFLINE='Not connected to your data yet. Start the Python back end (see README.md).';
+const FINAL_EVENTS_FILE='final_events.json';
+let finalEventsCache=null,selectedFinalEvents=null;
+let finalEventsStatus='Loading final_events.json…';
+function classifyFinalEvent(title,source){
+  if(/\b(exam|examination|midterm|final|quiz|test|practical)\b/i.test(title)&&!/\breview\b/i.test(title))return'exams';
+  if(/\b(SI|supplemental instruction|study support|study group|tutoring|office hours|academic support|learning center|writing center|exam review|review session|review workshop|review class)\b/i.test(title))return'si-sessions';
+  if(source==='canvas')return'homework';
+  if(source==='gmail')return'events';
+  return'events';
+}
+function parseFinalEventDate(text){
+  const value=String(text||''),dates=value.match(/\d{4}-\d{2}-\d{2}/g),times=[...value.matchAll(/\b(\d{1,2}):(\d{2})\b/g)];
+  if(!dates)return null;
+  const zone=(value.match(/\b(UTC|GMT|EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b/i)||[])[1]?.toUpperCase();
+  const offsets={UTC:0,GMT:0,EST:-300,EDT:-240,CST:-360,CDT:-300,MST:-420,MDT:-360,PST:-480,PDT:-420};
+  const makeDate=(date,timeIndex)=>{
+    const [year,month,day]=date.split('-').map(Number),time=times[timeIndex],hour=time?+time[1]:9,minute=time?+time[2]:0;
+    const local=new Date(year,month-1,day,hour,minute);
+    if(local.getFullYear()!==year||local.getMonth()!==month-1||local.getDate()!==day||hour>23||minute>59)return null;
+    return zone&&time?new Date(Date.UTC(year,month-1,day,hour,minute)-offsets[zone]*60000):local;
+  };
+  const when=makeDate(dates[0],0);
+  if(!when)return null;
+  let end=times.length>1?makeDate(dates[0],1):dates.length>1?makeDate(dates[1],0):null;
+  if(end&&end<=when&&dates.length===1)end=new Date(+end+86400000);
+  return{when,end,allDay:times.length===0,zone};
+}
+function parseFinalEvents(text){
+  const data=JSON.parse(text),raw=Array.isArray(data)?data:data?.events;
+  if(!Array.isArray(raw))throw new Error('Expected an events array.');
+  const converted=[],usedIds=new Set();let skipped=0;
+  raw.forEach((event,index)=>{
+    if(!event||typeof event.title!=='string'||!event.title.trim()){skipped++;return}
+    const parsed=parseFinalEventDate(event.date);
+    if(!parsed){skipped++;return}
+    let id=String(event.id||'json-event-'+(index+1)).replace(/[^\w-]/g,'')||'json-event-'+(index+1);
+    if(usedIds.has(id))id+='-'+(index+1);
+    usedIds.add(id);
+    const sourceKey=String(event.source||'').toLowerCase();
+    const source=sourceKey==='gmail'?'Gmail':sourceKey==='canvas'?'Canvas':String(event.source||'Imported file');
+    let description=String(event.description||'').trim(),course=String(event.course||'').trim(),link='';
+    const courseMatch=/^Course: (.*?)\.\s*/.exec(description);
+    if(!course&&courseMatch){course=courseMatch[1];description=description.slice(courseMatch[0].length)}
+    const linkMatch=/\s*Link: (\S+)\s*$/.exec(description);
+    if(linkMatch){link=linkMatch[1];description=description.slice(0,linkMatch.index).trim()}
+    const detail=[description,`Date as listed: ${event.date}.${parsed.zone&&!parsed.allDay?' Time converted from '+parsed.zone+' to your local timezone.':''}${parsed.allDay?' All day.':''}`,link].filter(Boolean).join(' ');
+    converted.push({id,section:classifyFinalEvent(event.title,sourceKey),title:event.title.trim(),course:course||(source==='Gmail'?'Email':source),when:parsed.when,...(parsed.end?{end:parsed.end}:{}),allDay:parsed.allDay,place:String(event.location||''),source,detail,finalEvent:true});
+  });
+  if(raw.length&&!converted.length)throw new Error('No valid event titles and dates were found.');
+  return{items:converted,skipped};
+}
+async function fetchFinalEvents(file=null){
+  if(file)return parseFinalEvents(await file.text());
+  const response=await fetch(FINAL_EVENTS_FILE,{cache:'no-store'});
+  if(!response.ok)throw new Error('HTTP '+response.status);
+  return parseFinalEvents(await response.text());
+}
+function syncFinalEvents(imported){
+  const incomingIds=new Set(imported.map(event=>event.id));
+  items.filter(item=>item.finalEvent&&!incomingIds.has(item.id)).forEach(item=>DONE.delete(item.id));
+  for(let i=items.length-1;i>=0;i--)if(items[i].finalEvent||incomingIds.has(items[i].id))items.splice(i,1);
+  imported.forEach(event=>{
+    const item=cleanItem(event,event.section);item.finalEvent=true;item.be=true;items.push(item);
+  });
+  buildRecommendations();refresh();
+}
+async function loadFinalEventsFile(file){
+  try{
+    const result=await fetchFinalEvents(file);
+    selectedFinalEvents=result.items;finalEventsCache=result.items;
+    finalEventsStatus=`Loaded ${result.items.length} records from ${file.name}${result.skipped?`; skipped ${result.skipped} invalid record${result.skipped===1?'':'s'}`:''}.`;
+    await loadFromBackend();
+  }catch(error){
+    finalEventsStatus=`Could not load ${file.name}: ${error.message}`;
+    PA.status=finalEventsStatus;console.error(finalEventsStatus,error);
+    const status=$('final-events-status');if(status)status.textContent=finalEventsStatus;
+    if(mode==='focus')renderPage();
+  }
+}
 PA.load=function(st){
   st=st||{};
   if(Array.isArray(st.items)){
@@ -2053,11 +2140,30 @@ PA.load=function(st){
 };
 PA.onReport=e=>{if(BACKEND.connected)fetch(BACKEND.report,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)}).catch(()=>{})};
 async function loadFromBackend(){
+  let state=null,backendError=null;
   try{
     const r=await fetch(BACKEND.url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);
-    const data=await r.json();BACKEND.connected=true;PA.load(data);
-    PA.status='Showing your data. Last updated '+clock(new Date())+'.';
-  }catch(e){BACKEND.connected=false;PA.status=OFFLINE;console.warn('Back end not reachable:',e.message)}
+    state=await r.json();if(!state||typeof state!=='object')throw new Error('Unexpected response format');
+    BACKEND.connected=true;
+  }catch(e){BACKEND.connected=false;backendError=e;console.warn('Back end not reachable:',e.message)}
+  let imported=selectedFinalEvents,eventError=null;
+  if(imported===null){
+    try{const result=await fetchFinalEvents();imported=result.items;finalEventsCache=imported;finalEventsStatus=`Loaded ${imported.length} records from ${FINAL_EVENTS_FILE}${result.skipped?`; skipped ${result.skipped} invalid record${result.skipped===1?'':'s'}`:''}.`;}
+    catch(e){eventError=e;imported=finalEventsCache;console.warn('Could not load '+FINAL_EVENTS_FILE+':',e.message)}
+  }
+  if(eventError&&!finalEventsStatus.startsWith('Loaded'))finalEventsStatus=`Could not load ${FINAL_EVENTS_FILE}: ${eventError.message}`;
+  if(state){
+    const backendItems=Array.isArray(state.items)?state.items:items.filter(item=>item.be&&!item.finalEvent);
+    const eventIds=new Set((imported||[]).map(item=>item.id));
+    state.items=[...backendItems.filter(item=>item&&!eventIds.has(String(item.id))),...(imported||[])];
+    PA.load(state);
+  }else if(imported!==null){
+    syncFinalEvents(imported);
+  }
+  const backendStatus=state?'Showing your data. Last updated '+clock(new Date())+'.':OFFLINE;
+  PA.status=[backendStatus,finalEventsStatus].filter(Boolean).join(' ');
+  const eventStatus=$('final-events-status');if(eventStatus)eventStatus.textContent=finalEventsStatus;
+  if(backendError&&!eventError)console.warn('Back end not reachable; final_events.json was loaded.');
   if(mode==='focus')renderPage();
 }
 
