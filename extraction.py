@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import List, Optional
 from google import genai
 from google.genai import types
@@ -56,17 +57,17 @@ def run_java_fetcher(project_dir="."):
 # ==========================================
 # 3. Call Gemini to Extract Events
 # ==========================================
-def extract_events_from_file(input_txt_path: str, output_json_path: str):
+def extract_events_from_file(input_txt_path: Path, output_json_path: Path):
     print(">>> [2/2] Parsing emails with Gemini...", flush=True)
 
-    if not os.path.exists(input_txt_path):
+    if not input_txt_path.exists():
         print(
             f">>> Error: Could not find '{input_txt_path}'. Did the Java script create it?",
             flush=True,
         )
         sys.exit(1)
 
-    with open(input_txt_path, "r", encoding="utf-8") as f:
+    with input_txt_path.open("r", encoding="utf-8") as f:
         email_content = f.read()
 
     # Initialize Gemini client (picks up GEMINI_API_KEY environment variable)
@@ -79,7 +80,7 @@ def extract_events_from_file(input_txt_path: str, output_json_path: str):
     )
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.6-flash",
         contents=[prompt, email_content],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -90,7 +91,7 @@ def extract_events_from_file(input_txt_path: str, output_json_path: str):
 
     events_data = json.loads(response.text)
 
-    with open(output_json_path, "w", encoding="utf-8") as f:
+    with output_json_path.open("w", encoding="utf-8") as f:
         json.dump(events_data, f, indent=2)
 
     total_events = len(events_data.get("events", []))
@@ -104,11 +105,12 @@ def extract_events_from_file(input_txt_path: str, output_json_path: str):
 # Main Execution Pipeline
 # ==========================================
 if __name__ == "__main__":
-    EMAILS_FILE = "emails.txt"
-    OUTPUT_FILE = "events.json"
+    PROJECT_DIR = Path(__file__).resolve().parent
+    EMAILS_FILE = PROJECT_DIR / "src" / "main" / "resources.txt"
+    OUTPUT_FILE = PROJECT_DIR / "events.json"
 
     # Step 1: Run Java to download emails
-    run_java_fetcher(project_dir=".")
+    run_java_fetcher(project_dir=str(PROJECT_DIR))
 
     # Step 2: Read file & extract with Gemini
     extract_events_from_file(EMAILS_FILE, OUTPUT_FILE)
