@@ -1,0 +1,17 @@
+# Secrets - never commit these
+credentials.json
+src/main/resources/credentials.json
+tokens/
+.env
+canvas.properties
+
+# Personal data generated when the app runs
+src/main/resources.txt
+events.json
+canvas_events.json
+final_events.json
+
+# Build output
+build/
+.gradle/
+__pycache__/

@@ -1,0 +1,15 @@
+# Canvas settings for the Productivity App
+#
+# How to use:
+#   1. Copy this file and name the copy  canvas.properties  (same folder)
+#   2. Fill in the two values below in canvas.properties
+#   3. Run:  .\gradlew.bat runCanvas   (Windows)   or   ./gradlew runCanvas   (Mac/Linux)
+#
+# canvas.properties is in .gitignore, so your token is never pushed to GitHub.
+# Keep your token secret: it works like your Canvas password.
+
+# Your school's Canvas address: copy it from your browser's address bar when Canvas is open.
+canvas.base_url=https://your-school.instructure.com
+
+# Make a token in Canvas: Account > Settings > Approved Integrations > + New Access Token
+canvas.token=paste-your-token-here
