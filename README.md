@@ -7,7 +7,7 @@ Event scraper from email/canvas/etc onto a GUI
 - pydantic
 - OAuth 2.0 credentials for GMail API
 - Gemini API
-#CLI Interface
+# CLI Interface
 To Setup Gemini API: read -rsp "Gemini API key: " GEMINI_API_KEY; echo; export GEMINI_API_KEY
 Copy your API key into the prompt and press enter, the key will not show.
 
