@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -21,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,9 +32,8 @@ import java.util.regex.Pattern;
  *
  *   { "events": [ { "title": ..., "date": ..., "location": ..., "description": ... } ] }
  *
- * Setup (environment variables):
- *   CANVAS_TOKEN     - personal access token (Canvas > Account > Settings > New Access Token)
- *   CANVAS_BASE_URL  - your school's Canvas address, e.g. https://canvas.umass.edu
+ * Setup: copy canvas.properties.example to canvas.properties and fill in your token and URL.
+ *   (Environment variables CANVAS_TOKEN / CANVAS_BASE_URL also work and take priority.)
  *
  * Usage:  ./gradlew runCanvas            (writes canvas_events.json)
  *         ./gradlew runCanvas --args="other_name.json"
@@ -40,8 +41,13 @@ import java.util.regex.Pattern;
 public class CanvasFetcher {
 
     // ---------- Settings ----------
-    private static final String BASE_URL = envOr("CANVAS_BASE_URL", "https://canvas.umass.edu");
-    private static final String TOKEN = System.getenv("CANVAS_TOKEN");
+    private static final String CONFIG_FILE = "canvas.properties";
+    private static final String PLACEHOLDER = "paste-your-token-here";
+    private static final Properties CONFIG = loadConfig();
+    private static final String BASE_URL =
+            setting("CANVAS_BASE_URL", "canvas.base_url", "https://canvas.umass.edu").trim().replaceAll("/+$", "");
+    private static final String TOKEN =
+            setting("CANVAS_TOKEN", "canvas.token", "").replaceAll("\\s", ""); // removes stray spaces/line breaks
     private static final ZoneId ZONE = ZoneId.of("America/New_York");
     private static final int DAYS_AHEAD = 60;            // how far into the future to look
     private static final int MAX_DESCRIPTION_CHARS = 500; // Canvas descriptions can be very long
@@ -74,8 +80,11 @@ public class CanvasFetcher {
 
     // ---------- Main ----------
     public static void main(String[] args) throws Exception {
-        if (TOKEN == null || TOKEN.isBlank()) {
-            System.err.println(">>> Error: set the CANVAS_TOKEN environment variable first.");
+        if (TOKEN.isEmpty() || TOKEN.equals(PLACEHOLDER)) {
+            System.err.println(">>> Error: no Canvas token found.");
+            System.err.println("    1. Copy canvas.properties.example to canvas.properties (in the project folder).");
+            System.err.println("    2. Open canvas.properties and paste your token after canvas.token=");
+            System.err.println("       (Make a token in Canvas: Account > Settings > + New Access Token.)");
             System.exit(1);
         }
         String outputPath = args.length > 0 ? args[0] : "canvas_events.json";
@@ -228,8 +237,26 @@ public class CanvasFetcher {
         return (o.has(key) && !o.get(key).isJsonNull()) ? o.get(key).getAsString() : null;
     }
 
-    private static String envOr(String name, String fallback) {
-        String v = System.getenv(name);
-        return (v == null || v.isBlank()) ? fallback.replaceAll("/+$", "") : v.replaceAll("/+$", "");
+    // Reads canvas.properties from the project folder, if it exists
+    private static Properties loadConfig() {
+        Properties props = new Properties();
+        Path file = Path.of(CONFIG_FILE);
+        if (Files.exists(file)) {
+            try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                props.load(r);
+            } catch (IOException e) {
+                System.err.println(">>> Warning: could not read " + CONFIG_FILE + ": " + e.getMessage());
+            }
+        }
+        return props;
+    }
+
+    // Environment variable first, then canvas.properties, then the fallback
+    private static String setting(String envName, String fileKey, String fallback) {
+        String v = System.getenv(envName);
+        if (v != null && !v.isBlank()) return v;
+        v = CONFIG.getProperty(fileKey);
+        if (v != null && !v.isBlank()) return v;
+        return fallback;
     }
 }
