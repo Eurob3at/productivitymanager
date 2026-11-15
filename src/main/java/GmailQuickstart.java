@@ -138,9 +138,36 @@ public class GmailQuickstart {
   private static String getBodyText(MessagePart payload) {
     String text = findBodyPart(payload, "text/plain");
     if (text.isEmpty()) {
-      text = findBodyPart(payload, "text/html");
+      text = sanitizeHtmlBody(findBodyPart(payload, "text/html"));
     }
     return text;
+  }
+
+  private static String sanitizeHtmlBody(String html) {
+    return html.replaceAll("(?is)<(script|style|head|noscript)\\b[^>]*>.*?</\\1\\s*>", " ")
+        .replaceAll("(?s)<!--.*?-->", " ")
+        .replaceAll("(?is)<picture\\b[^>]*>.*?</picture\\s*>", " ")
+        .replaceAll("(?is)<img\\b[^>]*>", " ")
+        .replaceAll("(?is)<source\\b[^>]*>", " ")
+        .replaceAll("(?i)<br\\s*/?>", "\n")
+        .replaceAll(
+            "(?i)</?(?:address|article|blockquote|div|dl|fieldset|figcaption|figure|footer|form"
+                + "|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th"
+                + "|thead|tr|ul)\\b[^>]*>",
+            "\n")
+        .replaceAll("(?s)<[^>]*>", " ")
+        .replace("&nbsp;", " ")
+        .replace("&#160;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
+        .replaceAll(" *\\n *", "\n")
+        .replaceAll("\\n{3,}", "\n\n")
+        .trim();
   }
 
   private static String findBodyPart(MessagePart part, String mimeType) {
